@@ -186,11 +186,12 @@ class DailyBriefing:
                 continue
                 
             # Process regular news items
+            # Process regular news items
             summary_text = (
-                f"**🕒 Freshness:** {item.get('posted_time', 'Recently')}\n"
-                f"**💡 Why it matters:** {item.get('why_it_matters', '')}\n\n"
-                f"**🛠️ How to Build/Use:** {item.get('how_to_build', 'See source')}\n\n"
-                f"**Description:** {item.get('description', '')}"
+                f"🕒 Freshness: {item.get('posted_time', 'Recently')}\n"
+                f"💡 Why it matters: {item.get('why_it_matters', '')}\n\n"
+                f"🛠️ How to Build/Use: {item.get('how_to_build', 'See source')}\n\n"
+                f"Description: {item.get('description', '')}"
             )
             
             news_item = NewsItem(

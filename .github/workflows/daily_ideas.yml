@@ -9,6 +9,9 @@ on:
   workflow_dispatch:
     # Manual trigger
 
+permissions:
+  contents: write
+
 jobs:
   run-briefing:
     runs-on: ubuntu-latest
