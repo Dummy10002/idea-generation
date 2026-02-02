@@ -167,68 +167,41 @@ class NotionDelivery:
         return properties
     
     def _build_page_content(self, item: NewsItem, research: Optional[str] = None) -> List[Dict]:
-        """Build the page body content."""
+        """
+        Build the page body content.
+        Style: Minimalist. Quote block for summary + View Link.
+        """
         # Use raw blocks if provided (Exact Control Mode)
         if hasattr(item, 'content_blocks') and item.content_blocks:
             return item.content_blocks
 
         children = []
         
-        # Source and link
-        source_text_obj = {
-            "type": "text", 
-            "text": {"content": item.source},
-            "annotations": {"bold": True}
-        }
-        
-        # Only add link if it exists and is not None
-        if item.link:
-            source_text_obj["text"]["link"] = {"url": item.link}
+        # 1. Summary (Quote Block)
+        # Split summary into chunks if needed (Notion limit 2000 chars)
+        summary_text = item.summary[:1900] if item.summary else "No summary provided."
+        children.append({
+            "object": "block",
+            "type": "quote",
+            "quote": {
+                "rich_text": [{"type": "text", "text": {"content": summary_text}}]
+            }
+        })
 
-        children.append({
-            "object": "block",
-            "type": "paragraph",
-            "paragraph": {
-                "rich_text": [
-                    {"type": "text", "text": {"content": "🔗 Source: "}},
-                    source_text_obj
-                ]
-            }
-        })
-        
-        # Score
-        children.append({
-            "object": "block",
-            "type": "paragraph",
-            "paragraph": {
-                "rich_text": [{"type": "text", "text": {"content": f"📊 Score: {item.score}/100"}}]
-            }
-        })
-        
-        # Divider
-        children.append({"object": "block", "type": "divider", "divider": {}})
-        
-        # Summary
-        if item.summary:
-            children.append({
-                "object": "block",
-                "type": "heading_3",
-                "heading_3": {
-                    "rich_text": [{"type": "text", "text": {"content": "Summary"}}]
-                }
-            })
-            
-            # Split summary into chunks (Notion has 2000 char limit per block)
-            summary_text = item.summary[:1900]
+        # 2. Link (Paragraph with link)
+        if item.link:
             children.append({
                 "object": "block",
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [{"type": "text", "text": {"content": summary_text}}]
+                    "rich_text": [
+                        {"type": "text", "text": {"content": "🔗 "}},
+                        {"type": "text", "text": {"content": "View Discussion", "link": {"url": item.link}}}
+                    ]
                 }
             })
         
-        # Research notes if provided
+        # 3. Research notes if provided
         if research:
             children.append({"object": "block", "type": "divider", "divider": {}})
             
@@ -242,7 +215,7 @@ class NotionDelivery:
             
             # Split research into chunks
             research_chunks = [research[i:i+1900] for i in range(0, len(research), 1900)]
-            for chunk in research_chunks[:3]:  # Max 3 blocks
+            for chunk in research_chunks[:5]:  # Allow a few more blocks for research
                 children.append({
                     "object": "block",
                     "type": "paragraph",
