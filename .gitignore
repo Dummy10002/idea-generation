@@ -1,0 +1,27 @@
+# Environment and secrets
+.env
+credentials.json
+*.json
+!package.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

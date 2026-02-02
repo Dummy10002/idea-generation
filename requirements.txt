@@ -1,0 +1,25 @@
+# AI News Automation System - Dependencies
+# =========================================
+
+# --- Core ---
+python-dotenv==1.0.1       # Environment variable management
+
+# --- News Collection ---
+feedparser==6.0.11         # RSS feed parsing
+pytrends==4.9.2            # Google Trends (unofficial)
+duckduckgo-search==6.3.7   # Free web search for context
+
+# --- Google Sheets ---
+gspread==6.1.4             # Google Sheets API wrapper
+google-auth==2.37.0        # Google authentication
+google-auth-oauthlib==1.2.1
+
+# --- LLM ---
+# anthropic==0.42.0        # REMOVED - Use free Claude Project instead
+
+# --- Utilities ---
+requests>=2.31.0           # HTTP requests (for Perplexity & Notion APIs)
+tenacity==9.0.0            # Retry logic with exponential backoff
+ratelimit==2.2.1           # Rate limiting decorator
+pydantic==2.10.5           # Data validation
+loguru==0.7.3              # Better logging
