@@ -124,16 +124,6 @@ class DailyBriefing:
             print(f"   ❌ Error in research pass: {e}")
             return []
 
-    def run(self):
-        now = self.get_current_time()
-        print("\n" + "="*50)
-        print(f"🚀 AI INTELLIGENCE BRIEFING: {now.strftime('%Y-%m-%d %H:%M')} ({self.timezone})")
-        print(self.budget.get_status())
-        print(self.rate_limiter.get_status())
-        if not self.check_services():
-            return
-        print("="*50)
-        
     def check_services(self) -> bool:
         """Pre-flight check for all external services."""
         print("🛠️ Performing Service Health Check...")
@@ -148,10 +138,6 @@ class DailyBriefing:
             
         # 2. Perplexity Check (Simple Ping)
         try:
-             # Just check if we can reach the API
-            # We don't want to waste money, so we assume if class is init and key exists, it's ok for now
-            # or do a very cheap prompt if strictly required. 
-            # For now, just checking key presence as strict check uses credits.
             if os.getenv("PERPLEXITY_API_KEY"):
                 print("   ✅ Perplexity: Key Configured")
             else:
@@ -165,7 +151,17 @@ class DailyBriefing:
             print("❌ Service checks failed. Aborting.")
         
         return all_good
-        
+
+    def run(self):
+        now = self.get_current_time()
+        print("\n" + "="*50)
+        print(f"🚀 AI INTELLIGENCE BRIEFING: {now.strftime('%Y-%m-%d %H:%M')} ({self.timezone})")
+        print(self.budget.get_status())
+        print(self.rate_limiter.get_status())
+        if not self.check_services():
+            return
+        print("="*50)
+
         # 1. Budget Check
         if not self.budget.check_budget():
             print("❌ Budget Limit Reached. Stopping.")
@@ -220,7 +216,6 @@ class DailyBriefing:
                 questions_buffer.append(item)
                 continue
                 
-            # Process regular news items
             # Process regular news items
             summary_text = (
                 f"🕒 Freshness: {item.get('posted_time', 'Recently')}\n"
