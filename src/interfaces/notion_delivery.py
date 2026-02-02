@@ -116,6 +116,14 @@ class NotionDelivery:
             return True
         return False
     
+    def _find_property(self, name: str) -> Optional[str]:
+        """Find property name in database regardless of extra spaces or case."""
+        target = name.strip().lower()
+        for prop_name in self.db_properties.keys():
+            if prop_name.strip().lower() == target:
+                return prop_name
+        return None
+
     def _build_simple_properties(self, item: NewsItem) -> Dict:
         """
         Build minimal properties that work with any Notion database.
@@ -123,12 +131,7 @@ class NotionDelivery:
         Only requires "Title" (or "Name") property which every database has.
         """
         # Find the title property (could be "Title", "Name", etc.)
-        title_prop_name = "Title"  # Default
-        
-        for prop_name, prop_config in self.db_properties.items():
-            if prop_config.get("type") == "title":
-                title_prop_name = prop_name
-                break
+        title_prop_name = self._find_property("Title") or self._find_property("Name") or "Title"
         
         # Build minimal properties - just the title
         properties = {
@@ -140,29 +143,56 @@ class NotionDelivery:
         }
         
         # Add optional properties if they exist in the database
-        if "Source" in self.db_properties:
-            properties["Source"] = {"select": {"name": item.source[:30]}}
         
-        if "Link" in self.db_properties and item.link:
-            properties["Link"] = {"url": item.link}
+        # 1. Source
+        prop_source = self._find_property("Source")
+        if prop_source:
+             properties[prop_source] = {"select": {"name": item.source[:30]}}
         
-        if "Score" in self.db_properties:
-            properties["Score"] = {"number": item.score}
+        # 2. Link
+        prop_link = self._find_property("Link")
+        if prop_link and item.link:
+            properties[prop_link] = {"url": item.link}
         
-        if "Status" in self.db_properties:
-            prop_type = self.db_properties["Status"]["type"]
+        # 3. Score (Normalized 1-10)
+        prop_score = self._find_property("Score")
+        if prop_score:
+            try:
+                score_val = float(item.score)
+                if score_val > 10:
+                    score_val = score_val / 10.0
+                score_val = max(1.0, min(10.0, score_val))
+                properties[prop_score] = {"number": round(score_val, 1)}
+            except (ValueError, TypeError):
+                properties[prop_score] = {"number": 5.0}
+        
+        # 4. Status
+        prop_status = self._find_property("Status")
+        if prop_status:
+            prop_type = self.db_properties[prop_status]["type"]
             if prop_type == "status":
-                properties["Status"] = {"status": {"name": "New"}}
+                properties[prop_status] = {"status": {"name": "New"}}
             elif prop_type == "select":
-                properties["Status"] = {"select": {"name": "New"}}
+                properties[prop_status] = {"select": {"name": "New"}}
         
-        if "Category" in self.db_properties:
+        # 5. Category
+        prop_cat = self._find_property("Category")
+        if prop_cat:
             category = "AI" if item.category == "ai_news" else "Trending"
-            prop_type = self.db_properties["Category"]["type"]
+            prop_type = self.db_properties[prop_cat]["type"]
             if prop_type == "select":
-                properties["Category"] = {"select": {"name": category}}
+                properties[prop_cat] = {"select": {"name": category}}
             elif prop_type == "multi_select":
-                properties["Category"] = {"multi_select": [{"name": category}]}
+                properties[prop_cat] = {"multi_select": [{"name": category}]}
+                
+        # 6. Date Added
+        prop_date = self._find_property("Date Added")
+        if prop_date:
+            date_val = item.published or datetime.now()
+            properties[prop_date] = {"date": {"start": date_val.isoformat()}}
+            
+        # 7. Approved (Explicity Exclude as per user request)
+        # We DO NOT add "Approved" to the payload even if it exists.
         
         return properties
     
@@ -177,26 +207,86 @@ class NotionDelivery:
 
         children = []
         
-        # 1. Summary (Quote Block)
-        # Split summary into chunks if needed (Notion limit 2000 chars)
-        summary_text = item.summary[:1900] if item.summary else "No summary provided."
-        children.append({
-            "object": "block",
-            "type": "quote",
-            "quote": {
-                "rich_text": [{"type": "text", "text": {"content": summary_text}}]
-            }
-        })
+        # 1. Smart Formatting (Parse the structured summary)
+        # We look for specific markers from daily_briefing.py
+        summary_text = item.summary or ""
+        
+        # Check if we have our structured format
+        if "Why it matters:" in summary_text and "Freshness:" in summary_text:
+            lines = summary_text.split('\n')
+            buffer = []
+            current_section = "intro"
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    if buffer:
+                        self._flush_buffer(children, buffer, current_section)
+                        buffer = []
+                    continue
+                    
+                # Detect Sections
+                if line.startswith("🕒 Freshness:"):
+                    if buffer: self._flush_buffer(children, buffer, current_section)
+                    buffer = [line.replace("🕒 Freshness:", "").strip()]
+                    current_section = "callout_freshness"
+                    
+                elif line.startswith("💡 Why it matters:"):
+                    if buffer: self._flush_buffer(children, buffer, current_section)
+                    children.append({
+                        "object": "block", "type": "heading_3",
+                        "heading_3": {"rich_text": [{"type": "text", "text": {"content": "💡 Why it matters"}}]}
+                    })
+                    buffer = [line.replace("💡 Why it matters:", "").strip()]
+                    current_section = "paragraph"
+                    
+                elif line.startswith("🛠️ How to Build/Use:"):
+                    if buffer: self._flush_buffer(children, buffer, current_section)
+                    children.append({
+                        "object": "block", "type": "heading_3",
+                        "heading_3": {"rich_text": [{"type": "text", "text": {"content": "🛠️ How to Build/Use"}}]}
+                    })
+                    buffer = [line.replace("🛠️ How to Build/Use:", "").strip()]
+                    current_section = "paragraph"
+                    
+                elif line.startswith("Description:"):
+                    if buffer: self._flush_buffer(children, buffer, current_section)
+                    children.append({
+                        "object": "block", "type": "heading_3",
+                        "heading_3": {"rich_text": [{"type": "text", "text": {"content": "📝 Description"}}]}
+                    })
+                    buffer = [line.replace("Description:", "").strip()]
+                    current_section = "paragraph"
+                    
+                else:
+                    buffer.append(line)
+            
+            # Flush remaining
+            if buffer:
+                self._flush_buffer(children, buffer, current_section)
+                
+        else:
+            # Fallback: Original Quote Block
+            summary_clean = summary_text[:1900] if summary_text else "No summary provided."
+            children.append({
+                "object": "block",
+                "type": "quote",
+                "quote": {
+                    "rich_text": [{"type": "text", "text": {"content": summary_clean}}]
+                }
+            })
 
-        # 2. Link (Paragraph with link)
+        # 2. Link (Callout for visibility)
         if item.link:
             children.append({
                 "object": "block",
-                "type": "paragraph",
-                "paragraph": {
+                "type": "callout",
+                "callout": {
+                    "icon": {"emoji": "🔗"},
+                    "color": "default",
                     "rich_text": [
-                        {"type": "text", "text": {"content": "🔗 "}},
-                        {"type": "text", "text": {"content": "View Discussion", "link": {"url": item.link}}}
+                        {"type": "text", "text": {"content": "Read Source: "}, "annotations": {"bold": True}},
+                        {"type": "text", "text": {"content": item.source, "link": {"url": item.link}}}
                     ]
                 }
             })
@@ -207,15 +297,15 @@ class NotionDelivery:
             
             children.append({
                 "object": "block",
-                "type": "heading_3",
-                "heading_3": {
+                "type": "heading_2",
+                "heading_2": {
                     "rich_text": [{"type": "text", "text": {"content": "🔬 Deep Research"}}]
                 }
             })
             
             # Split research into chunks
             research_chunks = [research[i:i+1900] for i in range(0, len(research), 1900)]
-            for chunk in research_chunks[:5]:  # Allow a few more blocks for research
+            for chunk in research_chunks:
                 children.append({
                     "object": "block",
                     "type": "paragraph",
@@ -225,6 +315,32 @@ class NotionDelivery:
                 })
         
         return children
+
+    def _flush_buffer(self, children: List[Dict], buffer: List[str], section_type: str):
+        """Helper to write buffered text to a block."""
+        if not buffer: return
+        
+        text_content = " ".join(buffer)
+        
+        if section_type == "callout_freshness":
+            children.append({
+                "object": "block",
+                "type": "callout",
+                "callout": {
+                    "icon": {"emoji": "🕒"},
+                    "color": "gray_background",
+                    "rich_text": [{"type": "text", "text": {"content": f"Freshness: {text_content}"}}]
+                }
+            })
+        else:
+            # Default to paragraph
+            children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": text_content}}]
+                }
+            })
     
     @retry(
         stop=stop_after_attempt(2),

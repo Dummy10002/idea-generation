@@ -39,7 +39,7 @@ from src.collectors.rss_collector import NewsItem
 # --- THE RESEARCHER PROMPT TEMPLATE ---
 RESEARCHER_PROMPT = """You are an AI trends researcher. Date: {CURRENT_DATE}. {TIME_OF_DAY} briefing.
 
-MANDATE: Discover 3-5 high-signal, "underground" updates from the LAST 24 HOURS.
+MANDATE: Discover 3 high-signal, "underground" updates from the LAST 24 HOURS.
 PRIORITY SOURCES: Reddit (r/LocalLLaMA, r/AutoGPT), HackerNews, X (Twitter) Dev Community, GitHub Trending.
 
 FOCUS AREAS (Must match these exactly):
@@ -49,6 +49,7 @@ CRITICAL RULES:
 1. **NOVELTY**: No mainstream news (like "Google did X"). Find the TOOLS and TECHNIQUES developers are talking about.
 2. **FRESHNESS**: Must be posted < 24 hours ago. Include the approx time (e.g., "4 hours ago").
 3. **EXCLUSION**: Ignore these: {PREVIOUS_IDEAS}
+4. **DEPTH**: Provide detailed technical insults. Do not be vague.
 
 OUTPUT FORMAT (JSON ONLY):
 [
@@ -58,9 +59,9 @@ OUTPUT FORMAT (JSON ONLY):
     "source_name": "Source (e.g., 'Reddit', 'X')",
     "source_url": "Direct Link",
     "posted_time": "e.g., '6 hours ago'",
-    "description": "What is it?",
-    "why_it_matters": "Why is this important?",
-    "how_to_build": "Technical implementation tip",
+    "description": "DETAILED CONTEXT: Provide 2+ paragraphs explaining what this is, how it works, and the 'secret sauce' behind it.",
+    "why_it_matters": "IMPACT: specific performance gains, cost reductions, or new capabilities unlocked.",
+    "how_to_build": "IMPLEMENTATION: Specific libraries, code snippets, or architecture patterns to use.",
     "virality_score": 9 
   }}
 ]
@@ -129,7 +130,41 @@ class DailyBriefing:
         print(f"🚀 AI INTELLIGENCE BRIEFING: {now.strftime('%Y-%m-%d %H:%M')} ({self.timezone})")
         print(self.budget.get_status())
         print(self.rate_limiter.get_status())
+        if not self.check_services():
+            return
         print("="*50)
+        
+    def check_services(self) -> bool:
+        """Pre-flight check for all external services."""
+        print("🛠️ Performing Service Health Check...")
+        all_good = True
+        
+        # 1. Notion Check
+        if self.notion.test_connection():
+            print("   ✅ Notion: Connected")
+        else:
+            print("   ❌ Notion: Failed Connection")
+            all_good = False
+            
+        # 2. Perplexity Check (Simple Ping)
+        try:
+             # Just check if we can reach the API
+            # We don't want to waste money, so we assume if class is init and key exists, it's ok for now
+            # or do a very cheap prompt if strictly required. 
+            # For now, just checking key presence as strict check uses credits.
+            if os.getenv("PERPLEXITY_API_KEY"):
+                print("   ✅ Perplexity: Key Configured")
+            else:
+                print("   ❌ Perplexity: Missing API Key")
+                all_good = False
+        except Exception:
+             print("   ❌ Perplexity: Error")
+             all_good = False
+             
+        if not all_good:
+            print("❌ Service checks failed. Aborting.")
+        
+        return all_good
         
         # 1. Budget Check
         if not self.budget.check_budget():
@@ -201,7 +236,7 @@ class DailyBriefing:
                 link=item.get('source_url', None),
                 summary=summary_text,
                 published=datetime.now(),
-                score=min(int(item.get('virality_score', 8)), 10),
+                score=int(item.get('virality_score', 8)),
                 category="ai_research"
             )
             notion_items.append(news_item)
