@@ -168,6 +168,10 @@ class NotionDelivery:
     
     def _build_page_content(self, item: NewsItem, research: Optional[str] = None) -> List[Dict]:
         """Build the page body content."""
+        # Use raw blocks if provided (Exact Control Mode)
+        if hasattr(item, 'content_blocks') and item.content_blocks:
+            return item.content_blocks
+
         children = []
         
         # Source and link

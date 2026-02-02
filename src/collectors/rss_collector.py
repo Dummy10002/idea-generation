@@ -26,6 +26,7 @@ class NewsItem:
     published: Optional[datetime] = None
     score: float = 0.0
     category: str = "ai_news"  # 'ai_news' or 'trending'
+    content_blocks: Optional[List[dict]] = None # Raw Notion blocks
     
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""

@@ -15,6 +15,11 @@ import json
 import time
 from pathlib import Path
 from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo  # Python < 3.9
+
 from typing import List, Dict
 
 # Add src to path
@@ -26,6 +31,7 @@ load_dotenv()
 from src.utils.logger import logger
 from src.utils.budget_manager import BudgetManager
 from src.utils.history_manager import HistoryManager
+from src.utils.rate_limiter import RateLimiter
 from src.generator.perplexity_discovery import PerplexityDiscovery
 from src.interfaces.notion_delivery import NotionDelivery
 from src.collectors.rss_collector import NewsItem
@@ -64,30 +70,48 @@ class DailyBriefing:
     def __init__(self):
         self.budget = BudgetManager()
         self.history = HistoryManager()
+        self.rate_limiter = RateLimiter()
         self.perplexity = PerplexityDiscovery()
         self.notion = NotionDelivery(os.getenv("NOTION_TOKEN"), os.getenv("NOTION_DATABASE_ID"))
+        self.timezone = os.getenv("TIMEZONE", "UTC")
         
+    def get_current_time(self) -> datetime:
+        """Get current time respecting the configured timezone."""
+        try:
+            return datetime.now(ZoneInfo(self.timezone))
+        except Exception:
+            return datetime.now()
+
     def _run_research_pass(self, focus_areas: str, session_name: str) -> List[Dict]:
         """Run a specific research pass."""
         print(f"\n🔍 Researching: {session_name}...")
         
         # Prepare params
-        time_of_day = "Morning" if datetime.now().hour < 12 else "Evening"
+        now = self.get_current_time()
+        time_of_day = "Morning" if now.hour < 12 else "Evening"
         previous_ideas = self.history.get_recent_titles()
         
         prompt = RESEARCHER_PROMPT.format(
-            CURRENT_DATE=datetime.now().strftime('%Y-%m-%d'),
+            CURRENT_DATE=now.strftime('%Y-%m-%d'),
             TIME_OF_DAY=time_of_day,
             FOCUS_AREAS=focus_areas,
             PREVIOUS_IDEAS=previous_ideas
         )
         
         try:
+            # Check rate limit for news fetching (per hour protection)
+            if not self.rate_limiter.can_fetch_news(15): # Allow 15 searches per hour seems reasonable for 3 passes
+                print("   ⚠️ Rate limit reached for news fetching.")
+                return []
+
             result = self.perplexity._query_perplexity(prompt, max_tokens=2000)
             if not result:
                 print("   ⚠️ No response from Perplexity")
                 return []
-                
+            
+            # Record success
+            self.rate_limiter.record_news_fetch()
+
             items = self.perplexity._parse_json_response(result['content'])
             print(f"   ✅ Found {len(items)} ideas in {session_name} (${result['cost']:.4f})")
             
@@ -100,15 +124,26 @@ class DailyBriefing:
             return []
 
     def run(self):
+        now = self.get_current_time()
         print("\n" + "="*50)
-        print(f"🚀 AI INTELLIGENCE BRIEFING: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        print(f"🚀 AI INTELLIGENCE BRIEFING: {now.strftime('%Y-%m-%d %H:%M')} ({self.timezone})")
         print(self.budget.get_status())
+        print(self.rate_limiter.get_status())
         print("="*50)
         
         # 1. Budget Check
         if not self.budget.check_budget():
             print("❌ Budget Limit Reached. Stopping.")
             return
+
+        # 2. Rate Limit Check (Daily Script Run Limit - e.g., 2 runs per day for Morning/Evening)
+        # We use 'can_generate_script' as a proxy for a full briefing run
+        if not self.rate_limiter.can_generate_script(4): # Allow 4 to be safe (Morning/Evening + retries)
+            print("❌ Daily Run Limit Reached. Stopping.")
+            return
+
+        # Record this run attempt
+        self.rate_limiter.record_script_generation()
 
         all_raw_items = []
         
@@ -182,40 +217,89 @@ class DailyBriefing:
                 if platform not in grouped_questions: grouped_questions[platform] = []
                 grouped_questions[platform].append(q)
             
-            # Build Rich Content with Cleaner Formatting
-            content_blocks = []
-            content_blocks.append("# 🔥 Top Community Debates (Daily Digest)\n")
-            content_blocks.append(f"_{len(questions_buffer)} trending discussions found across Reddit, X, and HackerNews._\n")
-            content_blocks.append("---\n")
+            # Build RAW Notion Blocks for exact control
+            notion_blocks = []
             
+            # Title: 🔥 Top Community Debates
+            notion_blocks.append({
+                "object": "block", "type": "heading_1",
+                "heading_1": {"rich_text": [{"type": "text", "text": {"content": "🔥 Top Community Debates (Daily Digest)"}}]}
+            })
+
+            # Subtitle
+            notion_blocks.append({
+                "object": "block", "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {
+                            "type": "text", 
+                            "text": {"content": f"{len(questions_buffer)} trending discussions found across Reddit, X, and HackerNews."},
+                            "annotations": {"italic": True}
+                        }
+                    ]
+                }
+            })
+            
+            # Divider
+            notion_blocks.append({"object": "block", "type": "divider", "divider": {}})
+
             for platform, quests in grouped_questions.items():
-                # Platform Header with color
                 emoji = "🔴" if "Reddit" in platform else "⚫" if "X" in platform else "🔵"
-                content_blocks.append(f"## {emoji} {platform}\n")
+                
+                # Platform Header (H2)
+                notion_blocks.append({
+                    "object": "block", "type": "heading_2",
+                    "heading_2": {"rich_text": [{"type": "text", "text": {"content": f"{emoji} {platform}"}}]}
+                })
                 
                 for q in quests:
                     title_text = q.get('title', 'Unknown').replace("❓", "").strip()
                     url = q.get('source_url', '#')
+                    desc = q.get('description', '')
+
+                    # 1. Title (Bold Paragraph)
+                    notion_blocks.append({
+                        "object": "block", "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [
+                                {
+                                    "type": "text", 
+                                    "text": {"content": title_text},
+                                    "annotations": {"bold": True}
+                                }
+                            ]
+                        }
+                    })
                     
-                    # Clean, spacious format
-                    content_blocks.append(f"**{title_text}**")
-                    content_blocks.append(f"> {q.get('description')}")
-                    content_blocks.append(f"🔗 [View Discussion]({url})\n")
+                    # 2. Description (Regular Paragraph)
+                    notion_blocks.append({
+                        "object": "block", "type": "paragraph",
+                        "paragraph": {"rich_text": [{"type": "text", "text": {"content": desc}}]}
+                    })
+                    
+                    # 3. Link (Paragraph with link)
+                    notion_blocks.append({
+                        "object": "block", "type": "paragraph",
+                        "paragraph": {"rich_text": [
+                            {"type": "text", "text": {"content": "🔗 "}},
+                            {"type": "text", "text": {"content": "View Discussion", "link": {"url": url}}}
+                        ]}
+                    })
                 
-                content_blocks.append("---\n")
+                # Divider between platforms
+                notion_blocks.append({"object": "block", "type": "divider", "divider": {}})
             
-            combined_summary = "\n".join(content_blocks)
-            
-            # Create the Single Item
+            # Create the Single Item with RAW BLOCKS
             questions_item = NewsItem(
                 id=f"questions_{datetime.now().strftime('%Y%m%d_%H%M')}",
                 title=f"❓ Daily Community Digest: {len(questions_buffer)} Burning Questions",
                 source="Multi-Platform",
                 link="https://www.google.com", 
-                summary=combined_summary,
+                summary="See blocks", # Fallback
                 published=datetime.now(),
-                score=95,
-                category="daily_questions"
+                score=10,
+                category="daily_questions",
+                content_blocks=notion_blocks
             )
             notion_items.append(questions_item)
 

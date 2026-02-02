@@ -1,0 +1,26 @@
+{
+  "name": "idea-generation",
+  "version": "1.0.0",
+  "description": "A streamlined, budget-conscious automation system that delivers **Elite AI Intelligence** to your Notion database twice daily.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dummy10002/idea-generation.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Dummy10002/idea-generation/issues"
+  },
+  "homepage": "https://github.com/Dummy10002/idea-generation#readme",
+  "dependencies": {
+    "@notionhq/client": "^5.9.0",
+    "@tryfabric/martian": "^1.2.4",
+    "dotenv": "^17.2.3"
+  }
+}
