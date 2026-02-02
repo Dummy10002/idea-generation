@@ -105,17 +105,41 @@ async function appendMarkdownToNotion(markdownContent) {
 const exampleMarkdown = `
 # 🔥 Top Community Debates (Daily Digest)
 
-*4 trending discussions found across Reddit, X, and HackerNews.*
+_4 trending discussions found across Reddit, X, and HackerNews._
 
 ---
 
 ## 🔴 Reddit
 
-**Discussion Title**
+**OpenClaw vs Moltbot: Which Name Sticks for Viral AI Agent?**
+> Developers debate the latest rebranding of the open-source AI assistant from Clawdbot to Moltbot to OpenClaw due to Anthropic trademark issues, with 100k+ GitHub stars.
+🔗 [View Discussion](https://www.reddit.com/r/LocalLLaMA/comments/1jabcde/openclaw_rebrand_from_moltbot_clawdbot_trademark/)
 
-Description text here.
+---
 
-🔗 [View Discussion](https://example.com)
+## 🔵 HackerNews
+
+**Daggr vs Gradio: Best for Debugging Multi-Step AI Workflows?**
+> Gradio team releases Daggr, Python lib for visual debugging of AI pipelines as directed graphs with GradioNode, FnNode, InferenceNode.
+🔗 [View Discussion](https://news.ycombinator.com/item?id=41234567)
+
+---
+
+## ⚫ X
+
+**How to Fix OpenClaw Security Risks in Autonomous Agents?**
+> Simon Willison flags risks in Moltbook where OpenClaw agents fetch/execute internet skills; cybersecurity debates sandboxing.
+🔗 [View Discussion](https://x.com/simonw/status/1847123456789012345)
+
+---
+
+## 🔵 Dev.to
+
+**Gemini API vs Local LLMs: Best for Portfolio AI Assistants?**
+> Tutorial on Astro + Tailwind + Gemini AI for context-aware portfolio Q&A, hitting 100/100 Lighthouse scores.
+🔗 [View Discussion](https://dev.to/safvantsy/beyond-simple-showcases-an-accessible-ai-powered-portfolio-cf5)
+
+---
 `;
 
 // Determine source of markdown: Command line argument (file path) or default example

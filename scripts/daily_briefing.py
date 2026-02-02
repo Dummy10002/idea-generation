@@ -271,10 +271,11 @@ class DailyBriefing:
                         }
                     })
                     
-                    # 2. Description (Regular Paragraph)
+                    # 2. Description (Quote Block!)
+                    # Matches the "> Text" markdown style
                     notion_blocks.append({
-                        "object": "block", "type": "paragraph",
-                        "paragraph": {"rich_text": [{"type": "text", "text": {"content": desc}}]}
+                        "object": "block", "type": "quote",
+                        "quote": {"rich_text": [{"type": "text", "text": {"content": desc}}]}
                     })
                     
                     # 3. Link (Paragraph with link)
