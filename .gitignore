@@ -3,6 +3,8 @@
 credentials.json
 *.json
 !package.json
+!data/budget_tracking.json
+!data/ideas_history.json
 
 # Python
 __pycache__/
